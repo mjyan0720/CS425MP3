@@ -11,7 +11,7 @@ FILES="src/*.java"
 
 mkdir "$OUTDIR" 2> /dev/null
 
-cmd=`echo "$COMP" "$EXTRA" -classpath "$CLASSPATH" -d "$OUTDIR" "$FILES"`
+cmd=`echo "$COMP"  "$EXTRA" -classpath "$CLASSPATH" -d "$OUTDIR" "$FILES"`
 echo "Compilation command: \"$cmd\" ";
 
 echo "-------------------------------"

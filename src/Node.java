@@ -21,15 +21,30 @@ public class Node implements Runnable{
 
     private int id;
 
+    private long timeout;
+    static private int delayUnit = 500;//ms
+
     // State control related variable
     public enum State{
-        INIT, REQUEST, REQUEST_WAIT, HELD, RELEASE
+        INIT, REQUEST, REQUEST_WAIT, HELD, RELEASE, DEADLOCK_RESOLVE 
     };
     private State state;
     private boolean voted;
+    private int voteId;
     private Set<Integer> recvAck = new HashSet<Integer>();
     //used to store message
-    private LinkedBlockingQueue<Message> messageQueue = new LinkedBlockingQueue<Message>();
+    private PriorityQueue<Message> messageQueue = new PriorityQueue<Message>(
+            Initializer.N, new messageComparator());
+
+    public class messageComparator implements Comparator<Message>{
+        public int compare(Message m1, Message m2){
+            if(m1.srcId<m2.srcId)
+                return -1;
+            else if(m1.srcId==m2.srcId)
+                return 0;
+            else return 1;
+        }
+    }
 
     //state, voted, ackCount and the queue are all considered
     //as node state
@@ -54,6 +69,7 @@ public class Node implements Runnable{
         this.state = state;
         this.stateLock = new ReentrantLock();
         this.voted = false;
+        this.voteId = -1;
     }
 
     public Node(int cs_int, int next_req, int option, int id){
@@ -82,6 +98,12 @@ public class Node implements Runnable{
         for(Node n : vs){
             voteSet.put(n.getId(), n);
         }
+        //set the timeout as waiting for all other voters in
+        //the voteset to get the critical section(or assign other
+        //processors once).
+        //It's not the most pessimistic case, therefore node will
+        //abort even though there's not deadlock.
+        this.timeout = (voteSet.size()-1)*cs_int*1000;//ms
     }
 
     // ******************
@@ -89,17 +111,9 @@ public class Node implements Runnable{
     // to start the state machine
     // ******************
     public void startStateMachine(){
-        //FIXME: for test,
-        //node 0 request, other wait
-        if(id==0){
             stateLock.lock();
             state = State.REQUEST;
             stateLock.unlock();
-        } else {
-            stateLock.lock();
-            state = State.RELEASE;
-            stateLock.unlock();
-        }
     }
 
     // *******************
@@ -128,25 +142,77 @@ public class Node implements Runnable{
             case REQUEST_WAIT:
                 //wait for replies from all voters
                 int ackCount_curr = 0;
-                while(ackCount_curr < voteSet.size()){
+                long timestamp_wait_start = System.currentTimeMillis();
+                long timestamp_curr = System.currentTimeMillis();
+                while(ackCount_curr < voteSet.size()
+                        && (timestamp_curr-timestamp_wait_start)< this.timeout){
                     stateLock.lock();
                     ackCount_curr = recvAck.size();
                     stateLock.unlock();
+                    timestamp_curr = System.currentTimeMillis();
                 }
                 //received enough acks
                 //change state to held
                 stateLock.lock();
-                state = State.HELD;
+                if(ackCount_curr<voteSet.size()){
+                    state = State.DEADLOCK_RESOLVE;
+                } else {
+                    state = State.HELD;
+                }
                 stateLock.unlock();
-                if(option<=2){
+                break;
+            case DEADLOCK_RESOLVE:
+                //if a deadlock is detected, send giveup message
+                //in order to avoid livelock, give preference to 
+                //processor with smaller id
+                boolean winner = true;
+                stateLock.lock();
+                if(voteId>=this.id){
+                    //check the queue to see any smaller
+                    //requestor id, if exists, not winner
+                    //this time
+                    for(Message m : messageQueue){
+                        if(m.srcId<this.id){
+                            winner=false;
+                            break;
+                        }
+                    }
+                }else{
+                    //already voted for a smaller id
+                    //not winner this time
+                    winner = false;
+                }
+                stateLock.unlock();
+                // -- 1. send give up messages
+                if(winner==false){
+                    sendGiveupMessage();
+                // -- 2. sleep for a random length of time
+                //Random rand = new Random(System.currentTimeMillis());
+                //sleep for 0~0.5s, increase resolution
+                //int random_num = rand.nextInt(preRequestMaxTime/10)*10;
+                int delay = this.id * delayUnit;
+                    try{
+                        Thread.sleep(delay);
+                    }catch(InterruptedException e){
+                        e.printStackTrace(System.out);
+                    }
+                }
+                stateLock.lock();
+                if(winner==false){
+                    state = State.REQUEST;
+                } else {
+                    state = State.REQUEST_WAIT;
+                }
+                stateLock.unlock();
+                break;
+            case HELD:
+               if(option<=2){
                     String s = "CS: "+df.format(new Date())+" "+this.id+" <- ";
                     for(int id : recvAck){
                         s += " "+id+",";
                     }
                     System.out.println(s);
                 }
-                break;
-            case HELD:
                 //hold the critical section for cs_int(seconds)
                 try{
                     Thread.sleep(cs_int*1000);
@@ -183,7 +249,7 @@ public class Node implements Runnable{
     // called by other threads
     // used as communication channel
     // **********************************
-    public void recvMessage(Message message){
+    public synchronized void recvMessage(Message message){
 
         Date date = new Date(message.timestamp);
         if(option>0){
@@ -198,16 +264,13 @@ public class Node implements Runnable{
                 //respond with regarding to state
                 if(state==State.HELD || voted==true){
                     //queue the request
-                    try{
-                        messageQueue.put(message);
-                    } catch (InterruptedException e){
-                        e.printStackTrace(System.out);
-                    }
+                    messageQueue.add(message);
                 } else {
                     //reply the request
                     //set voted first then send
                     //to avoid send more than 2 ack
                     voted = true;
+                    voteId = message.srcId;
                     replyMessage = new Message(this.id, message.srcId,
                             System.currentTimeMillis(), Message.Type.REQUEST_ACK);
                 }
@@ -222,8 +285,10 @@ public class Node implements Runnable{
                 if(messageQueue.size()!=0){
                     voted = true;
                     nextMessage = messageQueue.poll();
+                    voteId = nextMessage.srcId;
                 }else{
                     voted = false;
+                    voteId = -1;
                 }
                 stateLock.unlock();//Release Lock
                 if(nextMessage!=null){
@@ -234,6 +299,18 @@ public class Node implements Runnable{
                 break;
             }
             case GIVEUP:
+                //delete corresponding request message
+                stateLock.lock();//Aqurie Lock
+                if(voteId == message.srcId){
+                    voted = false;
+                    voteId = -1;
+                }else{//delete it from the queue
+                    Message recvMessage = new Message(message);
+                    recvMessage.type = Message.Type.REQUEST;
+                    boolean res = messageQueue.remove(recvMessage);
+                    assert res == true : "giveup can't find corresponding message in messageQueue";
+                }
+                stateLock.unlock();//Release Lock
                 break;
             case REQUEST_ACK:
                 stateLock.lock();//Acquire Lock
@@ -274,4 +351,16 @@ public class Node implements Runnable{
        }
     }
 
+    private void sendGiveupMessage(){
+       for(Node n : voteSet.values()){
+          //send give up to those haven't respond
+          Message m = new Message(this.id, n.getId(),
+              System.currentTimeMillis(), Message.Type.GIVEUP);
+         if(option==2){
+           System.out.println(this.id+" -> "+m.destId+" "+m.type);
+         }
+         n.recvMessage(m);
+       }
+
+    }
 }

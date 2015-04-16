@@ -17,7 +17,7 @@ public class Initializer{
                  //start next request
     int tot_exec_time;//total execution time, unit: s
     int option;//log format
-    int N;//number of nodes
+    static int N;//number of nodes
 
     Vector<Node> nodes = new Vector<Node>();
     Vector<Thread> threads = new Vector<Thread>();
@@ -45,17 +45,36 @@ public class Initializer{
         //once connections all set up
         //move all nodes from init state to request state
         startNodes();
+        
+        //***************debug****************
+        //print node status periodically to detect
+        //deadlock
+        //***********************************
+        while(true){
+            try{
+                Thread.sleep(cs_int*1000);
+            } catch(InterruptedException e){
+                e.printStackTrace(System.out);
+            }
+            String s = new String();
+            for(Node n : nodes){
+                s += n.getId() +":"+n.getState()+"; ";
+            }
+            System.out.println(s);
+        }
+
 
         //sleep for total execution time, when reach
         //kill all thread and exit
-        try{
+        //FIXME: uncomment to work
+/*        try{
             Thread.sleep(tot_exec_time*1000);
         } catch(InterruptedException e){
             e.printStackTrace(System.out);
         }
         killNodes();
         System.exit(0);
-    }
+*/    }
 
     public Initializer(int cs_int, int next_req, 
             int tot_exec_time, int option){
