@@ -50,7 +50,7 @@ public class Initializer{
         //print node status periodically to detect
         //deadlock
         //***********************************
-        while(true){
+/*        while(true){
             try{
                 Thread.sleep(cs_int*1000);
             } catch(InterruptedException e){
@@ -62,19 +62,19 @@ public class Initializer{
             }
             System.out.println(s);
         }
-
+*/
 
         //sleep for total execution time, when reach
         //kill all thread and exit
         //FIXME: uncomment to work
-/*        try{
+        try{
             Thread.sleep(tot_exec_time*1000);
         } catch(InterruptedException e){
             e.printStackTrace(System.out);
         }
         killNodes();
         System.exit(0);
-*/    }
+    }
 
     public Initializer(int cs_int, int next_req, 
             int tot_exec_time, int option){
