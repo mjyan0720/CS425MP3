@@ -109,7 +109,7 @@ public class Node implements Runnable{
         //processors once).
         //It's not the most pessimistic case, therefore node will
         //abort even though there's not deadlock.
-        this.timeout = (voteSet.size()-1)*cs_int*1000;//ms
+        this.timeout = (voteSet.size()-1)*cs_int;//ms
     }
 
     // ******************
@@ -224,9 +224,9 @@ public class Node implements Runnable{
                     }
                     System.out.println(s);
                 }
-                //hold the critical section for cs_int(seconds)
+                //hold the critical section for cs_int(miliseconds)
                 try{
-                    Thread.sleep(cs_int*1000);
+                    Thread.sleep(cs_int);
                 }catch(InterruptedException e){
                     e.printStackTrace(System.out);
                 }
@@ -239,7 +239,7 @@ public class Node implements Runnable{
                 break;
             case RELEASE:
                 try{
-                    Thread.sleep(next_req*1000);
+                    Thread.sleep(next_req);
                 }catch(InterruptedException e){
                     e.printStackTrace(System.out);
                 }

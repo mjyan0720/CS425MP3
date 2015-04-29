@@ -15,7 +15,7 @@ public class Initializer{
     int cs_int;//time spent in critical section
     int next_req;//time between exit critical section and
                  //start next request
-    int tot_exec_time;//total execution time, unit: s
+    int tot_exec_time;//total execution time, unit: ms
     int option;//log format
     static int N;//number of nodes
 
@@ -32,11 +32,11 @@ public class Initializer{
 
         this.cs_int = cs_int;
         this.next_req = next_req;
-        this.tot_exec_time = tot_exec_time;
+        this.tot_exec_time = tot_exec_time*1000;
         this.option = option;
         this.N = N;
         double sqrtN = Math.sqrt(N);
-        //require N = x*x;
+       //require N = x*x;
         assert (Math.ceil(sqrtN) == Math.floor(sqrtN));
 
         //create nodes and set up connections
@@ -68,7 +68,7 @@ public class Initializer{
         //kill all thread and exit
         //FIXME: uncomment to work
         try{
-            Thread.sleep(tot_exec_time*1000);
+            Thread.sleep(this.tot_exec_time);
         } catch(InterruptedException e){
             e.printStackTrace(System.out);
         }
